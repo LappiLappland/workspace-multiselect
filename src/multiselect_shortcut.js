@@ -94,7 +94,7 @@ const registerShortcutDelete = function() {
           apply(element[0]);
         }
         dragSelection.clear();
-      } else if (!dragSelection.size) {
+      } {
         apply(selected);
       }
 

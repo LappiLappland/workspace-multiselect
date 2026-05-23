@@ -222,7 +222,7 @@ export const copyCallback = (workspace, useCopyPasteCrossTab) => {
     for (const element of selected.subDraggables) {
       apply(element[0]);
     }
-  } else if (!dragSelection.size) {
+  } else {
     apply(selected);
   }
 
@@ -288,7 +288,7 @@ export const cutCallback = (workspace, useCopyPasteCrossTab) => {
       apply(element[0]);
       selected.removeSubDraggable_(element[0]);
     }
-  } else if (!dragSelection.size) {
+  } else {
     apply(selected);
   }
   dragSelection.clear();

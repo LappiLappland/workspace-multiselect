@@ -652,7 +652,7 @@ const registerDelete = function() {
         }
         dragSelection.clear();
         selected.clearAll_();
-      } else if (!dragSelection.size) {
+      } else {
         apply(selected);
       }
 
@@ -945,7 +945,7 @@ const registerCommentDelete = function() {
         }
         dragSelection.clear();
         selected.clearAll_();
-      } else if (!dragSelection.size) {
+      } else {
         apply(scope.comment);
       }
 
@@ -1150,7 +1150,7 @@ const registerCommentCopy = function(useCopyPasteCrossTab) {
             apply(element[0]);
           }
         }
-      } else if (!dragSelection.size) {
+      } else {
         apply(scope.comment);
       }
 
