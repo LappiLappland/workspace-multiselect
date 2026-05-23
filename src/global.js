@@ -9,6 +9,7 @@
  */
 
 import * as Blockly from 'blockly/core';
+import { MultiselectDraggable } from './multiselect_draggable';
 
 /**
  * Weakmap for storing multidraggable objects for a given workspace (as a key).
@@ -164,4 +165,237 @@ export const blockNumGetFromStorage = function(useCopyPasteCrossTab) {
     return storage.length;
   }
   return copyData.size;
+};
+
+/**
+ * Check whether element can be copied
+ */
+export const copyCheckCallback = (element) => {
+  if (element instanceof Blockly.BlockSvg) {
+    return element && element.isDeletable() && element.isMovable() &&
+        (element.isInMutator || !hasSelectedParent(element));
+  } else if (element instanceof
+      Blockly.comments.RenderedWorkspaceComment) {
+    return element && element.isDeletable() && element.isMovable();
+  }
+  return false;
+};
+
+/**
+ * Copy selected elements
+ * 
+ * @param {boolean} workspace Workspace this action was triggered on
+ * @param {boolean} useCopyPasteCrossTab Whether or not to use copy/paste
+ */
+export const copyCallback = (workspace, useCopyPasteCrossTab) => {
+  copyData.clear();
+  workspace.hideChaff();
+  const blockList = [];
+  const apply = function(element) {
+    if (copyCheckCallback(element)) {
+      copyData.add(JSON.stringify(element.toCopyData()));
+      if (element instanceof Blockly.BlockSvg) {
+        blockList.push(element.id);
+      }
+    }
+  };
+  const selected = Blockly.common.getSelected();
+  const dragSelection = dragSelectionWeakMap.get(workspace);
+  Blockly.Events.setGroup(true);
+
+  // Handle the case where MultiselectDraggable is in use
+  if (selected && selected instanceof MultiselectDraggable) {
+    for (const element of selected.subDraggables) {
+      apply(element[0]);
+    }
+  } else if (!dragSelection.size) {
+    apply(selected);
+  }
+
+  connectionDBList.length = 0;
+  blockList.forEach(function(id) {
+    const block = workspace.getBlockById(id);
+    const parentBlock = block.getParent();
+    if (parentBlock && blockList.indexOf(parentBlock.id) !== -1 &&
+        parentBlock.getNextBlock() === block) {
+      connectionDBList.push([
+        blockList.indexOf(parentBlock.id),
+        blockList.indexOf(block.id)]);
+    }
+  });
+  if (useCopyPasteCrossTab) {
+    dataCopyToStorage();
+  }
+  Blockly.Events.setGroup(false);
+  return true;
+};
+
+/**
+ * Cut selected elements
+ * 
+ * @param {boolean} workspace Workspace this action was triggered on
+ * @param {boolean} useCopyPasteCrossTab Whether or not to use copy/paste
+ */
+export const cutCallback = (workspace, useCopyPasteCrossTab) => {
+  copyData.clear();
+  const elementList = [];
+  const apply = function(element) {
+    if (copyCheckCallback(element)) {
+      copyData.add(JSON.stringify(element.toCopyData()));
+      elementList.push(element.id);
+    }
+  };
+  const applyDelete = function(element) {
+    if (!element) return;
+    element.workspace.hideChaff();
+    if (element instanceof Blockly.BlockSvg) {
+      if (element.outputConnection) {
+        element.dispose(false, true);
+      } else {
+        element.dispose(true, true);
+      }
+    } else {
+      // This may need to be adjusted based on what
+      // kinds of draggables are added to blockly
+      element.dispose();
+    }
+  };
+
+  const selected = Blockly.common.getSelected();
+  const dragSelection = dragSelectionWeakMap.get(workspace);
+  Blockly.Events.setGroup(true);
+
+  // Handle the case where MultiselectDraggable is in use
+  if (selected && selected instanceof MultiselectDraggable) {
+    for (const element of selected.subDraggables) {
+      apply(element[0]);
+      selected.removeSubDraggable_(element[0]);
+    }
+  } else if (!dragSelection.size) {
+    apply(selected);
+  }
+  dragSelection.clear();
+
+  connectionDBList.length = 0;
+  elementList.forEach(function(id) {
+    const block = workspace.getBlockById(id);
+    if (block) {
+      const parentBlock = block.getParent();
+      if (parentBlock && elementList.indexOf(parentBlock.id) !== -1 &&
+          parentBlock.getNextBlock() === block) {
+        connectionDBList.push([
+          elementList.indexOf(parentBlock.id),
+          elementList.indexOf(block.id)]);
+      }
+    }
+  });
+  elementList.forEach(function(id) {
+    const element = getByID(workspace, id);
+    applyDelete(element);
+  });
+
+  if (useCopyPasteCrossTab) {
+    dataCopyToStorage();
+  }
+  Blockly.Events.setGroup(false);
+};
+
+/**
+ * Paste selected elements
+ * 
+ * @param {boolean} workspace Workspace this action was triggered on
+ * @param {boolean} useCopyPasteCrossTab Whether or not to use copy/paste
+ */
+export const pasteCallback = (workspace, useCopyPasteCrossTab) => {
+  if (workspace.isMutator && workspace.id !== copyMutatorId) {
+    return;
+  }
+
+  inPasteShortcut.set(workspace, true);
+  const dragSelection = dragSelectionWeakMap.get(workspace);
+  const multiDraggable = multiDraggableWeakMap.get(workspace);
+
+  // Update the dragSelection and multiDraggable object
+  // to remove current selection prior to pasting.
+  if (dragSelection?.size) {
+    dragSelection.forEach(function(id) {
+      const element = getByID(workspace, id);
+      if (element) {
+        element.unselect();
+      }
+    });
+    dragSelection.clear();
+    multiDraggable.clearAll_();
+  }
+
+  Blockly.Events.setGroup(true);
+
+  const blockList = [];
+  if (useCopyPasteCrossTab) {
+    dataCopyFromStorage();
+  }
+  const getPasteBlock = function(data, workspace) {
+    const state = data.blockState || data.commentState;
+    const {left, top, width, height} =
+        workspace.getMetricsManager().getViewMetrics(true);
+    const centerCoords = new Blockly.utils.Coordinate(
+        left + width / 2, top + height / 2);
+    const viewportRect = new Blockly.utils.Rect(
+        top, top + height, left, left + width);
+    if (viewportRect.contains(state.x, state.y)) {
+      return Blockly.clipboard.paste(data, workspace);
+    }
+    return Blockly.clipboard.paste(data, workspace, centerCoords);
+  };
+  copyData.forEach(function(stringData) {
+    const data = JSON.parse(stringData);
+    // Set unique id for data to prevent bug where
+    // blocks on multiple workspaces are highlighted.
+    if (workspace.id !== Blockly.getMainWorkspace().id) {
+      if (data.blockState) {
+        data.blockState.id = Blockly.utils.idGenerator.genUid();
+      } else if (data.commentState) {
+        data.commentState.id = Blockly.utils.idGenerator.genUid();
+      }
+    }
+
+    if (data.source) {
+      workspace = data.source;
+    }
+    if (workspace.isFlyout) {
+      workspace = workspace.targetWorkspace;
+    }
+    if (data.typeCounts &&
+        workspace.isCapacityAvailable(data.typeCounts)) {
+      const element = getPasteBlock(data, workspace);
+      if (element) {
+        blockList.push(element);
+      }
+      if (element.type !== 'drag_to_dupe') {
+        dragSelectionWeakMap.get(workspace).add(element.id);
+        multiDraggableWeakMap.get(workspace).addSubDraggable_(element);
+      }
+    } else if (data.commentState) {
+      const element = getPasteBlock(data, workspace);
+      if (element) {
+        element.select();
+      }
+      dragSelectionWeakMap.get(workspace).add(element.id);
+      multiDraggableWeakMap.get(workspace).addSubDraggable_(element);
+    }
+  });
+  connectionDBList.forEach(function(connectionDB) {
+    blockList[connectionDB[0]].nextConnection.connect(
+        blockList[connectionDB[1]].previousConnection);
+  });
+
+  if (!copyMutatorId) {
+    if (dragSelection.size === 1) {
+      Blockly.common.setSelected(getByID(workspace, dragSelection.values().next().value));
+    } else {
+      Blockly.common.setSelected(multiDraggable);
+    }
+  }
+  
+  Blockly.Events.setGroup(false);
 };
