@@ -61,6 +61,12 @@ export const registeredShortcut = [];
  */
 let timestamp = 0;
 
+/**
+ * Store the id of mutator workspace which elements were copied from.
+ * `null` if nothing is copied or if elements were not copied from mutator workspace
+ */
+let copyMutatorId = null;
+
 // TODO: Update custom enum below into actual enum
 //  if plugin is updated to TypeScript.
 /**
@@ -117,6 +123,10 @@ export const getByID = function(workspace, id) {
  * Store copy information for blocks in localStorage.
  */
 export const dataCopyToStorage = function() {
+  if (copyMutatorId) {
+    localStorage.removeItem('blocklyStashMulti')
+    return;
+  }
   const storage = [];
   copyData.forEach((data) => {
     delete data['source'];
@@ -190,12 +200,16 @@ export const copyCheckCallback = (element) => {
 export const copyCallback = (workspace, useCopyPasteCrossTab) => {
   copyData.clear();
   workspace.hideChaff();
+  copyMutatorId = null;
   const blockList = [];
   const apply = function(element) {
     if (copyCheckCallback(element)) {
       copyData.add(JSON.stringify(element.toCopyData()));
       if (element instanceof Blockly.BlockSvg) {
         blockList.push(element.id);
+        if (element.isInMutator) {
+          copyMutatorId = element.workspace.id;
+        }
       }
     }
   };
@@ -215,7 +229,7 @@ export const copyCallback = (workspace, useCopyPasteCrossTab) => {
   connectionDBList.length = 0;
   blockList.forEach(function(id) {
     const block = workspace.getBlockById(id);
-    const parentBlock = block.getParent();
+    const parentBlock = block?.getParent();
     if (parentBlock && blockList.indexOf(parentBlock.id) !== -1 &&
         parentBlock.getNextBlock() === block) {
       connectionDBList.push([
@@ -243,6 +257,9 @@ export const cutCallback = (workspace, useCopyPasteCrossTab) => {
     if (copyCheckCallback(element)) {
       copyData.add(JSON.stringify(element.toCopyData()));
       elementList.push(element.id);
+      if (element.isInMutator) {
+        copyMutatorId = element.workspace.id;
+      }
     }
   };
   const applyDelete = function(element) {
@@ -365,13 +382,19 @@ export const pasteCallback = (workspace, useCopyPasteCrossTab) => {
     if (workspace.isFlyout) {
       workspace = workspace.targetWorkspace;
     }
+    if (copyMutatorId) {
+      workspace = Blockly.common.getWorkspaceById(copyMutatorId);
+    }
+    if (!workspace) {
+      return;
+    }
     if (data.typeCounts &&
         workspace.isCapacityAvailable(data.typeCounts)) {
       const element = getPasteBlock(data, workspace);
       if (element) {
         blockList.push(element);
       }
-      if (element.type !== 'drag_to_dupe') {
+      if (element.type !== 'drag_to_dupe' && !copyMutatorId) {
         dragSelectionWeakMap.get(workspace).add(element.id);
         multiDraggableWeakMap.get(workspace).addSubDraggable_(element);
       }
@@ -380,8 +403,10 @@ export const pasteCallback = (workspace, useCopyPasteCrossTab) => {
       if (element) {
         element.select();
       }
-      dragSelectionWeakMap.get(workspace).add(element.id);
-      multiDraggableWeakMap.get(workspace).addSubDraggable_(element);
+      if (!copyMutatorId) {
+        dragSelectionWeakMap.get(workspace).add(element.id);
+        multiDraggableWeakMap.get(workspace).addSubDraggable_(element);
+      }
     }
   });
   connectionDBList.forEach(function(connectionDB) {
