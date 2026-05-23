@@ -250,6 +250,116 @@ test("delete blocks via context menu", async ({ page, act }) => {
 	expect(await getSelectedId(page)).toBeNull();
 });
 
+test("single multiselect block delete via keyboard", async ({ page, act }) => {
+	await act(page.mouse.click(...(await getEmptySpace(page))));
+	expect(await getHighlightedBlockIds(page)).toEqual([]);
+
+	await act(page.keyboard.down("Shift"));
+	await act(
+		page.mouse.click(...(await getBlock(page, { id: "block1" })).centerTop),
+	);
+	await act(page.keyboard.up("Shift"));
+
+	expect(await getHighlightedBlockIds(page)).toEqual(["block1"]);
+	expect(await getSelectedId(page)).toBe("block1");
+
+	await act(page.keyboard.press("Delete"));
+
+	expect(await getAllBlockIds(page)).toEqual([
+		"block2",
+		"block2-child",
+		"block3",
+		"block3-child",
+		"block4",
+	]);
+	expect(await getHighlightedBlockIds(page)).toEqual([]);
+	expect(await getSelectedId(page)).toBeNull();
+});
+
+test("single multiselect block copy/paste via keyboard", async ({ page, act }) => {
+	await act(page.mouse.click(...(await getEmptySpace(page))));
+
+	await act(page.keyboard.down("Shift"));
+	await act(
+		page.mouse.click(...(await getBlock(page, { id: "block1" })).centerTop),
+	);
+	await act(page.keyboard.up("Shift"));
+
+	expect(await getHighlightedBlockIds(page)).toEqual(["block1"]);
+	expect(await getSelectedId(page)).toBe("block1");
+
+	await act(page.keyboard.press("ControlOrMeta+C"));
+
+	await act(page.mouse.click(...(await getEmptySpace(page))));
+	expect(await getHighlightedBlockIds(page)).toEqual([]);
+
+	await act(page.keyboard.press("ControlOrMeta+V"));
+
+	const allBlockIds = await getAllBlockIds(page);
+	expect(allBlockIds).toHaveLength(7);
+
+	const newBlockId = allBlockIds.find(
+		(id) =>
+			![
+				"block1",
+				"block2",
+				"block2-child",
+				"block3",
+				"block3-child",
+				"block4",
+			].includes(id),
+	);
+	expect(newBlockId).toBeDefined();
+	expect(await getHighlightedBlockIds(page)).toEqual([newBlockId!]);
+	expect(await getSelectedId(page)).toBe(newBlockId);
+});
+
+test("single multiselect block cut/paste via keyboard", async ({ page, act }) => {
+	await act(page.mouse.click(...(await getEmptySpace(page))));
+
+	await act(page.keyboard.down("Shift"));
+	await act(
+		page.mouse.click(...(await getBlock(page, { id: "block1" })).centerTop),
+	);
+	await act(page.keyboard.up("Shift"));
+
+	expect(await getAllBlockIds(page)).toEqual([
+		"block1",
+		"block2",
+		"block2-child",
+		"block3",
+		"block3-child",
+		"block4",
+	]);
+	expect(await getHighlightedBlockIds(page)).toEqual(["block1"]);
+	expect(await getSelectedId(page)).toBe("block1");
+
+	await act(page.keyboard.press("ControlOrMeta+X"));
+
+	expect(await getAllBlockIds(page)).toEqual([
+		"block2",
+		"block2-child",
+		"block3",
+		"block3-child",
+		"block4",
+	]);
+	expect(await getHighlightedBlockIds(page)).toEqual([]);
+	expect(await getSelectedId(page)).toBeNull();
+
+	await act(page.keyboard.press("ControlOrMeta+V"));
+
+	expect(await getAllBlockIds(page)).toEqual([
+		"block1",
+		"block2",
+		"block2-child",
+		"block3",
+		"block3-child",
+		"block4",
+	]);
+	expect(await getHighlightedBlockIds(page)).toEqual(["block1"]);
+	expect(await getSelectedId(page)).toBe("block1");
+});
+
 test("drag blocks to trash", async ({ page, act }) => {
 	await act(
 		page.mouse.move(...(await getBlock(page, { id: "block1" })).centerTop),
