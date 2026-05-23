@@ -288,6 +288,7 @@ export const cutCallback = (workspace, useCopyPasteCrossTab) => {
       apply(element[0]);
       selected.removeSubDraggable_(element[0]);
     }
+    dragSelection.clear();
   } else {
     apply(selected);
   }
@@ -314,6 +315,7 @@ export const cutCallback = (workspace, useCopyPasteCrossTab) => {
   if (useCopyPasteCrossTab) {
     dataCopyToStorage();
   }
+  Blockly.common.setSelected(null);
   Blockly.Events.setGroup(false);
 };
 
